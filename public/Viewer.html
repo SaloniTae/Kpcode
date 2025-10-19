@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Viewer Dashboard - Screen Share</title>
+<style>
+body { font-family: 'Segoe UI', sans-serif; background:#f4f6f8; margin:0; padding:0;}
+header { background:#6d4c41; color:#fff; padding:15px; text-align:center; font-size:24px; }
+.container { max-width:900px; margin:20px auto; background:#fff; padding:20px; border-radius:10px; box-shadow:0 0 15px rgba(0,0,0,0.1);}
+video { width:100%; border-radius:10px; margin-top:15px; background:#000; }
+.status { margin-top:15px; font-weight:bold; font-size:16px; }
+footer { text-align:center; margin-top:20px; color:#888; font-size:14px; }
+</style>
+</head>
+<body>
+
+<header>Viewer Dashboard - Screen Share</header>
+<div class="container">
+    <div class="status" id="status">Status: Connecting...</div>
+    <video id="remoteVideo" autoplay playsinline controls></video>
+</div>
+
+<footer>© 2025 ScreenShare Pro</footer>
+
+<script>
+const ws = new WebSocket('ws://localhost:8080');
+const statusEl = document.getElementById('status');
+const remoteVideo = document.getElementById('remoteVideo');
+let pc;
+
+ws.onopen = () => {
+    console.log('Connected to signaling server');
+    ws.send(JSON.stringify({type:'viewer'}));
+    statusEl.textContent='Status: Connected to server';
+    pc = new RTCPeerConnection();
+
+    pc.ontrack = (evt) => {
+        const remoteStream = evt.streams[0];
+        remoteVideo.srcObject = remoteStream;
+    };
+
+    pc.onicecandidate = (event) => {
+        if(event.candidate){
+            ws.send(JSON.stringify({type:'ice', target:'host', data:event.candidate}));
+        }
+    };
+};
+
+ws.onmessage = async (msg) => {
+    const message = JSON.parse(msg.data);
+    if(message.type==='offer'){
+        await pc.setRemoteDescription(new RTCSessionDescription(message.data));
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        ws.send(JSON.stringify({type:'answer', data:answer}));
+        statusEl.textContent='Status: Watching host screen';
+    } else if(message.type==='ice'){
+        try{ await pc.addIceCandidate(message.data);} catch(e){console.error(e);}
+    }
+};
+</script>
+
+</body>
+</html>
